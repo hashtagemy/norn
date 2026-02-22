@@ -37,8 +37,6 @@ phantomguard_logs/*
 # Runtime-generated files
 agents_registry.json
 config.json
-session/
-slack_events/
 
 # Temp/test output files
 *.txt
@@ -49,19 +47,6 @@ demo_output/
 
 # REPL state
 repl_state/
-
-# Trader files (external project)
-trader.py
-thinker.py
-trade_memory.py
-data_manager.py
-config.py
-executor.py
-market_analyzer.py
-create_trader_session_log.py
-run_trader_with_phantomguard.py
-test_trader_simple.py
-TRADER_*.md
 
 # Jupyter
 .ipynb_checkpoints/
