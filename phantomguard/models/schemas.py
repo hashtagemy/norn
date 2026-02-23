@@ -51,6 +51,8 @@ class IssueType(str, Enum):
     UNAUTHORIZED_ACCESS = "UNAUTHORIZED_ACCESS" # Accessing forbidden resources
     SUSPICIOUS_BEHAVIOR = "SUSPICIOUS_BEHAVIOR" # Unusual action patterns
     CREDENTIAL_LEAK = "CREDENTIAL_LEAK"       # API keys, passwords in output
+    SECURITY_BYPASS = "SECURITY_BYPASS"       # SSL/TLS verification disabled
+    MISSING_CONFIG  = "MISSING_CONFIG"        # Required env var / config missing
 
 
 class GuardMode(str, Enum):

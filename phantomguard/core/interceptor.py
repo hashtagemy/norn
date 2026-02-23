@@ -421,8 +421,8 @@ class PhantomGuardHook(HookProvider):
                     recommendation="Agent may be drifting from task objective"
                 ))
             
-            # Check for security issues
-            if security is not None and security < 50:
+            # Check for security issues (eşik <= 50: AI skoru tam 50 verince de tetiklenir)
+            if security is not None and security <= 50:
                 issue_type = "SUSPICIOUS_BEHAVIOR"
                 if "exfiltration" in reasoning.lower() or "external" in reasoning.lower():
                     issue_type = "DATA_EXFILTRATION"
@@ -430,7 +430,9 @@ class PhantomGuardHook(HookProvider):
                     issue_type = "PROMPT_INJECTION"
                 elif "credential" in reasoning.lower() or "password" in reasoning.lower():
                     issue_type = "CREDENTIAL_LEAK"
-                
+                elif "ssl" in reasoning.lower() or "verify" in reasoning.lower() or "certificate" in reasoning.lower():
+                    issue_type = "SECURITY_BYPASS"
+
                 self._issues.append(QualityIssue(
                     issue_type=issue_type,
                     severity=10 if security < 20 else 8,
@@ -438,9 +440,32 @@ class PhantomGuardHook(HookProvider):
                     affected_steps=[step.step_id],
                     recommendation="Review this action for security implications"
                 ))
-                
+
                 if self._session_report:
                     self._session_report.security_breach_detected = True
+
+            # Config eksikliği tespiti (tool sonucunda eksik env var hataları)
+            _CONFIG_ERROR_PATTERNS = [
+                ("no knowledge base id",          "STRANDS_KNOWLEDGE_BASE_ID env var tanımlı değil"),
+                ("no kb id",                       "STRANDS_KNOWLEDGE_BASE_ID env var tanımlı değil"),
+                ("knowledge base id not provided", "STRANDS_KNOWLEDGE_BASE_ID env var tanımlı değil"),
+                ("api key not found",              "API anahtarı eksik — ilgili env var kontrol edilmeli"),
+                ("credentials not configured",     "AWS/servis kimlik bilgileri yapılandırılmamış"),
+                ("missing environment variable",   "Zorunlu bir env var tanımlı değil"),
+            ]
+            result_lower = (full_result or "").lower()
+            for _pattern, _hint in _CONFIG_ERROR_PATTERNS:
+                if _pattern in result_lower:
+                    self._issues.append(QualityIssue(
+                        issue_type=IssueType.MISSING_CONFIG,
+                        severity=7,
+                        description=(
+                            f"Adım {step.step_number} ({step.tool_name}) config hatasıyla başarısız: {_hint}"
+                        ),
+                        affected_steps=[step.step_id],
+                        recommendation=f"Eksik yapılandırmayı düzeltin. Hata içeriği: '{_pattern}'"
+                    ))
+                    break
         
         except Exception as e:
             logger.warning(f"Step evaluation failed: {e}")

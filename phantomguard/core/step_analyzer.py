@@ -54,7 +54,27 @@ class StepAnalyzer:
         """
         issues = []
         status = StepStatus.SUCCESS
-        
+
+        # 0. Deterministik güvenlik kontrolleri (AI değerlendirmesinden önce)
+        # SSL/TLS bypass tespiti
+        _SSL_BYPASS_KEYS = ("verify_ssl", "verify", "ssl_verify", "check_ssl", "ssl_check")
+        for _key in _SSL_BYPASS_KEYS:
+            if tool_input.get(_key) is False:
+                issues.append(QualityIssue(
+                    issue_type=IssueType.SECURITY_BYPASS,
+                    severity=8,
+                    description=(
+                        f"'{_key}=False' tespit edildi: SSL sertifika doğrulaması devre dışı bırakıldı. "
+                        "Bu bir MITM (ortadaki adam) saldırısına kapı açar."
+                    ),
+                    affected_steps=[f"step_{step_number}"],
+                    recommendation=(
+                        f"'{_key}' parametresini kaldırın veya True olarak bırakın. "
+                        "SSL hatası yaşıyorsanız sertifikayı düzgün yükleyin (certifi / CA bundle)."
+                    )
+                ))
+                break
+
         # 1. Check for exact duplicate calls
         input_hash = self._hash_input(tool_name, tool_input)
         if input_hash in self._input_hashes:
