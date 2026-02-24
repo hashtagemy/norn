@@ -26,10 +26,8 @@ class QualityEvaluator:
     Uses Amazon Nova models to evaluate agent execution quality.
     
     Model Selection:
-    - Nova Micro: Fast, lightweight checks (relevance scoring)
-    - Nova Lite: Standard quality evaluation (default)
-    - Nova Pro: Deep analysis for complex tasks
-    - Nova Premier: Most sophisticated evaluation
+    - Nova Lite: Both step relevance checks and session evaluation (default for both)
+    - Nova Pro: Deep analysis for complex tasks (set model_id="us.amazon.nova-2-pro-v1:0")
     """
     
     def __init__(
@@ -147,7 +145,7 @@ Respond with JSON:
 }}"""
         
         try:
-            # Use fast model (Nova Micro) for quick check
+            # Use fast model (Nova Lite) for quick check
             response = self.fast_agent(prompt)
             response_text = str(response) if not isinstance(response, str) else response
             result = self._parse_json_response(response_text)
