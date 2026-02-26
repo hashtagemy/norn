@@ -1,4 +1,4 @@
-# 🛡️ Norn
+# Norn
 
 > **AI Agent Quality & Security Monitoring Platform**
 
