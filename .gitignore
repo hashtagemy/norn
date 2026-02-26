@@ -33,10 +33,21 @@ norn_logs/*
 !norn_logs/.gitkeep
 !norn_logs/*/
 !norn_logs/*/.gitkeep
+norn_logs/**/*.json
 
 # Runtime-generated files
 agents_registry.json
 config.json
+appointments.db
+data/
+sessions/
+session/
+
+# Screenshots (managed manually)
+docs/screenshots/
+
+# Local dev config
+.claude/
 
 # Temp/test output files
 *.txt
