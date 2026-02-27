@@ -96,6 +96,76 @@ The **"System Online"** indicator in the top bar should be green. If it shows of
 5. Enter a task description and click **Run**
 6. Watch the live execution feed — scores and issues appear in real time
 
+Output files created by the agent land in `norn_logs/workspace/{session_id}/`, keeping the project root clean.
+
+---
+
+## 6. Monitor a Multi-Agent Swarm
+
+Use `swarm_id` to group multiple agents into a single monitored pipeline. Norn tracks them together and calculates an **alignment score** — how closely each agent stayed on the original goal.
+
+```python
+from norn import NornHook
+from strands import Agent
+
+# Step 1 — Researcher
+hook_a = NornHook(
+    swarm_id="my-pipeline",   # shared across all agents in this run
+    swarm_order=1,            # position in the pipeline
+    agent_name="Researcher"
+)
+agent_a = Agent(tools=[...], hooks=[hook_a])
+result_a = agent_a("Find the latest AI safety research trends")
+
+# Step 2 — Writer (receives output from step 1)
+hook_b = NornHook(
+    swarm_id="my-pipeline",
+    swarm_order=2,
+    agent_name="Writer"
+)
+agent_b = Agent(tools=[...], hooks=[hook_b])
+agent_b(f"Write a report based on this research: {result_a}")
+```
+
+After both agents finish, open the **Swarm Monitor** tab in the dashboard to see:
+
+```
+[my-pipeline]  2 agents  Alignment: 82%  GOOD
+  1 · Researcher  →  EXCELLENT  Eff 88%  Sec 95%
+  2 · Writer      →  GOOD       Eff 76%  Sec 91%
+```
+
+The alignment score compares each agent's task to the first agent's intent:
+- **≥ 80%** — Aligned (green)
+- **50–79%** — Slight Drift (yellow)
+- **< 50%** — High Drift (red)
+
+---
+
+## 7. Workspace Isolation
+
+Every agent run gets its own working directory so output files don't pollute the project root:
+
+```
+norn_logs/workspace/
+├── git-20260227-my-agent-run1/
+│   ├── result.txt
+│   └── data.db
+└── hook-my-pipeline-researcher/
+    └── findings.md
+```
+
+Agents can also read the `NORN_WORKSPACE` environment variable to explicitly reference their workspace:
+
+```python
+import os
+from pathlib import Path
+
+workspace = Path(os.environ.get("NORN_WORKSPACE", "."))
+output_file = workspace / "result.txt"
+output_file.write_text("Done!")
+```
+
 ---
 
 ## Troubleshooting
@@ -109,6 +179,7 @@ The **"System Online"** indicator in the top bar should be green. If it shows of
 | Scores show "N/A" | AWS Bedrock connection may be failing — check credentials and region |
 | Agent import fails | Confirm the GitHub URL is public and accessible |
 | Shadow browser shows "UNAVAILABLE" | Set `NOVA_ACT_API_KEY` in `.env` and run `pip install -e ".[browser]"` |
+| Swarm Monitor shows empty | Ensure `swarm_id` is set in `NornHook` and agents have completed at least one run |
 
 ---
 
@@ -116,3 +187,4 @@ The **"System Online"** indicator in the top bar should be green. If it shows of
 
 - **Configuration** — Adjust guard mode and thresholds in the dashboard **Settings** panel
 - **Integration** — See [README.md](README.md) to embed Norn directly into your agent code
+- **Swarm Monitoring** — See the **Swarm Monitor** tab for multi-agent pipeline visibility

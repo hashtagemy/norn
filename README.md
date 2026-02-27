@@ -2,7 +2,7 @@
 
 > **AI Agent Quality & Security Monitoring Platform**
 
-Real-time monitoring and testing platform for AI agents. Import agents from GitHub or ZIP, analyze their code, detect issues, and monitor execution in real-time.
+Real-time monitoring and testing platform for AI agents. Import agents from GitHub or ZIP, analyze their code, detect issues, and monitor execution in real-time — including multi-agent swarm pipelines.
 
 [![Amazon Nova](https://img.shields.io/badge/Amazon-Nova-orange)](https://aws.amazon.com/bedrock/nova/)
 [![Strands](https://img.shields.io/badge/Strands-1.23%2B-purple)](https://github.com/awslabs/strands)
@@ -21,6 +21,7 @@ AI agents are complex and unpredictable:
 - Leak sensitive data
 - Execute malicious commands
 - Hallucinate results
+- In multi-agent pipelines: silently diverge from the original goal as tasks are handed off
 
 You need to test, analyze, and monitor them before and during execution.
 
@@ -44,7 +45,20 @@ Execute agents directly from the dashboard with real-time monitoring:
 - Issue detection and alerts
 - Automatic loop and drift detection
 
-### 3. Review & Improve
+### 3. Workspace Isolation
+Each agent run gets its own isolated working directory:
+- Output files (databases, logs, results) go to `norn_logs/workspace/{session_id}/` — not the project root
+- Agents receive the `NORN_WORKSPACE` env var pointing to their directory
+- Clean separation between runs; no cross-contamination
+
+### 4. Swarm Monitoring *(multi-agent pipelines)*
+Monitor chains of agents that work together as a swarm:
+- Group sessions by `swarm_id` — see the full pipeline at a glance
+- **Alignment score**: measures how closely each agent's task aligns with the first agent's intent
+- Per-agent quality, efficiency, and security scores in pipeline order
+- Spot where a multi-agent chain starts drifting off-goal
+
+### 5. Review & Improve
 Comprehensive session reports with:
 - Task completion analysis
 - Efficiency and security scores
@@ -52,7 +66,7 @@ Comprehensive session reports with:
 - Agent decision-making observations
 - AI-powered recommendations via Amazon Nova
 
-### 4. Browser Audit *(requires Nova Act API key)*
+### 6. Browser Audit *(requires Nova Act API key)*
 Shadow browser verification powered by Nova Act:
 - Automatically visits URLs accessed by agents
 - Verifies that web content matches expected results
@@ -103,6 +117,7 @@ Modern React dashboard with real-time monitoring:
 - **Real-Time Monitoring** — WebSocket-based live updates during execution
 - **Session History** — View all past executions with detailed reports
 - **Issue Detection** — Security, quality, and dependency issues highlighted
+- **Swarm Monitor** — Multi-agent pipeline view with alignment score and per-agent breakdown
 - **Browser Audit** — Nova Act shadow verification for web-browsing agents (set `NOVA_ACT_API_KEY` to enable)
 - **Configuration** — Adjust guard mode and thresholds from the UI
 
@@ -128,12 +143,24 @@ Modern React dashboard with real-time monitoring:
 - **Tool Detection** — Finds `@tool` decorators, external tools, tool imports
 - **Issue Classification** — HIGH / MEDIUM / LOW severity with descriptions
 
-### 4. Runtime Monitoring
+### 4. Workspace Isolation
+Each agent execution gets a sandboxed working directory:
+```
+norn_logs/workspace/
+├── git-20260227-calendar-agent-run1/   ← output files land here
+│   ├── result.txt
+│   └── appointments.db
+└── hook-my-pipeline-agent-a/
+    └── report.md
+```
+The path is exposed as `NORN_WORKSPACE` so agents can reference it explicitly.
+
+### 5. Runtime Monitoring
 - **Step Analyzer** — Detects loops, drift, and inefficiency (deterministic, fast)
 - **Quality Evaluator** — AI-powered relevance and security scoring via Amazon Nova Micro
 - **Security Monitor** — Checks for data leaks, injections, unauthorized access
 
-### 5. Session Evaluation
+### 6. Session Evaluation
 After task completion, deep analysis with Nova Lite:
 - Task completion assessment with confidence score
 - Per-tool usage analysis: was each tool used correctly?
@@ -141,7 +168,19 @@ After task completion, deep analysis with Nova Lite:
 - Efficiency explanation (actual steps vs expected)
 - Actionable recommendations
 
-### 6. Browser Audit *(optional)*
+### 7. Swarm Monitoring
+When multiple agents share the same `swarm_id`, Norn groups them into a pipeline view:
+- **Alignment score** (0–100%): Jaccard word-overlap between each agent's task and the first agent's — detects goal drift across the chain
+- **Agent ordering**: agents are displayed in `swarm_order` sequence with visual connectors
+- **Collective quality**: the pipeline's worst quality level is surfaced at the swarm level
+
+| Alignment | Label | Meaning |
+|---|---|---|
+| ≥ 80% | Aligned | All agents working toward the same goal |
+| 50–79% | Slight Drift | Minor topic divergence |
+| < 50% | High Drift | Agents have diverged significantly from original intent |
+
+### 8. Browser Audit *(optional)*
 When agents visit URLs, Nova Act runs a shadow browser session to independently verify:
 - The page content matches what the agent reported
 - No prompt injection payloads are present in the page
@@ -207,6 +246,34 @@ export NORN_AUTO_ENABLE=true
 python your_agent.py
 ```
 
+### 5. Multi-Agent Swarm
+Group multiple agents into a monitored pipeline with `swarm_id`:
+
+```python
+from norn import NornHook
+from strands import Agent
+
+# Agent 1 — Researcher
+hook_a = NornHook(
+    swarm_id="research-pipeline",
+    swarm_order=1,
+    agent_name="Researcher"
+)
+agent_a = Agent(tools=[web_search, ...], hooks=[hook_a])
+result_a = agent_a("Find recent AI safety research trends")
+
+# Agent 2 — Writer (receives output from Agent 1)
+hook_b = NornHook(
+    swarm_id="research-pipeline",
+    swarm_order=2,
+    agent_name="Writer"
+)
+agent_b = Agent(tools=[file_write, ...], hooks=[hook_b])
+agent_b(f"Write a report based on: {result_a}")
+```
+
+Both sessions appear together under **Swarm Monitor** in the dashboard, with an alignment score showing how closely Agent 2's task stayed on topic.
+
 ---
 
 ## 📊 What You Get
@@ -229,6 +296,21 @@ python your_agent.py
 }
 ```
 
+### Swarm Reports
+```json
+{
+  "swarm_id": "research-pipeline",
+  "agent_count": 3,
+  "overall_quality": "GOOD",
+  "drift_score": 0.82,
+  "agents": [
+    {"agent_name": "Researcher", "swarm_order": 1, "overall_quality": "EXCELLENT", "efficiency_score": 88},
+    {"agent_name": "Writer",     "swarm_order": 2, "overall_quality": "GOOD",      "efficiency_score": 76},
+    {"agent_name": "Publisher",  "swarm_order": 3, "overall_quality": "GOOD",      "efficiency_score": 82}
+  ]
+}
+```
+
 ### Quality Levels
 | Level | Score | Meaning |
 |---|---|---|
@@ -245,7 +327,8 @@ python your_agent.py
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                   React Dashboard                        │
-│  (Agent Import, Analysis View, Execution, Monitoring)   │
+│  (Agent Import, Analysis View, Execution, Monitoring,   │
+│   Swarm Monitor, Browser Audit, Audit Logs)             │
 └────────────────────┬────────────────────────────────────┘
                      │ WebSocket + REST API
 ┌────────────────────▼────────────────────────────────────┐
@@ -254,12 +337,13 @@ python your_agent.py
 │  • Code Discovery & Analysis                            │
 │  • Smart Task Generation (Nova Lite)                    │
 │  • Dependency Installation                              │
-│  • Agent Execution                                      │
+│  • Agent Execution (isolated workspace per session)     │
 │  • Session Management                                   │
+│  • Swarm Grouping & Drift Calculation                   │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
-│              Norn Core                          │
+│                    Norn Core                            │
 │  • Hook Integration (Strands)                           │
 │  • Step Analyzer (loops, drift)                         │
 │  • Quality Evaluator (Amazon Nova)                      │
@@ -273,14 +357,15 @@ python your_agent.py
 
 | File | Purpose |
 |---|---|
-| `norn/api.py` | FastAPI server — REST + WebSocket + task generation |
-| `norn/core/interceptor.py` | Hook implementation |
+| `norn/api.py` | FastAPI server — REST + WebSocket + task generation + swarm endpoints |
+| `norn/core/interceptor.py` | Hook implementation — swarm_id/order support |
 | `norn/core/step_analyzer.py` | Deterministic loop & drift detection |
 | `norn/core/audit_logger.py` | Structured JSON logging |
 | `norn/agents/quality_evaluator.py` | AI scoring via Amazon Nova |
 | `norn/agents/shadow_browser.py` | Nova Act browser verification |
 | `norn/utils/agent_discovery.py` | AST-based code analysis |
 | `norn/utils/agent_runner.py` | Agent execution harness |
+| `norn-dashboard/components/SwarmView.tsx` | Swarm Monitor dashboard tab |
 
 ---
 
@@ -288,6 +373,7 @@ python your_agent.py
 
 - **Development** — Debug agent behavior, identify inefficiencies, test security posture
 - **Production** — Monitor agent quality, detect anomalies, ensure compliance
+- **Multi-Agent Pipelines** — Track alignment across agent chains, catch goal drift early
 - **Research** — Analyze behavior patterns, compare approaches, collect execution data
 
 ---
