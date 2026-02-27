@@ -46,10 +46,6 @@ session/
 # Screenshots (managed manually)
 docs/screenshots/
 
-# Hackathon files (not part of the project)
-blogpost.md
-inspiration.md
-
 # Local dev config
 .claude/
 
