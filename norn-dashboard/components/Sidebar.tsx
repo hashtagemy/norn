@@ -18,9 +18,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) =
   return (
     <div className="w-64 border-r border-dark-border bg-dark-bg flex flex-col">
       {/* Brand */}
-      <div className="h-16 flex items-center gap-3 px-6 border-b border-dark-border">
-        <img src="/favicon.svg" alt="Norn" className="w-8 h-8 flex-shrink-0" />
-        <span className="font-bold text-gray-100 tracking-tight">Norn</span>
+      <div className="h-16 flex items-center px-6 border-b border-dark-border">
+        <img src="/logo.svg" alt="Norn" className="h-7" />
       </div>
 
       {/* Primary Action */}
