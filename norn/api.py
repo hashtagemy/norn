@@ -2170,15 +2170,22 @@ def _drift_score(sessions: list[dict]) -> float:
     if len(sessions) < 2:
         return 1.0
 
+    def _task_str(s: dict) -> str:
+        """Extract task as plain string — handles both str and TaskDefinition dict."""
+        t = s.get("task") or ""
+        if isinstance(t, dict):
+            t = t.get("description") or ""
+        return str(t)
+
     sorted_sessions = sorted(sessions, key=lambda s: s.get("swarm_order") or 0)
-    first_task = (sorted_sessions[0].get("task") or "").lower().split()
+    first_task = _task_str(sorted_sessions[0]).lower().split()
     if not first_task:
         return 1.0
 
     first_set = set(first_task)
     scores = []
     for s in sorted_sessions[1:]:
-        other_task = (s.get("task") or "").lower().split()
+        other_task = _task_str(s).lower().split()
         if not other_task:
             scores.append(0.0)
             continue
@@ -2237,7 +2244,7 @@ def list_swarms() -> list[dict]:
                     "overall_quality": m.get("overall_quality", "PENDING"),
                     "efficiency_score": m.get("efficiency_score"),
                     "security_score": m.get("security_score"),
-                    "task": m.get("task"),
+                    "task": (m.get("task") or {}).get("description", "") if isinstance(m.get("task"), dict) else (m.get("task") or ""),
                     "status": m.get("status"),
                     "total_steps": m.get("total_steps", 0),
                     "handoff_input": m.get("handoff_input"),

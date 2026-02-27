@@ -164,13 +164,22 @@ class NornHook(HookProvider):
         elif hasattr(agent, "model"):
             model_name = str(agent.model) if agent.model else None
 
-        # Fixed session ID (same across runs for hook agents)
+        # Fixed session ID — unique per swarm run, persistent for solo hook agents
         if self._norn_url and self._external_agent_name:
             slug = "".join(
                 c if c.isalnum() or c == "_" else "_"
                 for c in self._external_agent_name.lower().replace(" ", "_")
             )
-            fixed_session_id = f"hook-{slug}"
+            if self.swarm_id:
+                # Swarm agent: unique session per swarm run (swarm_id already has timestamp)
+                swarm_slug = "".join(
+                    c if c.isalnum() or c == "_" else "_"
+                    for c in self.swarm_id
+                )
+                fixed_session_id = f"swarm-{swarm_slug}-{slug}"
+            else:
+                # Solo hook agent: fixed ID (accumulates across runs)
+                fixed_session_id = f"hook-{slug}"
         else:
             fixed_session_id = None
 
