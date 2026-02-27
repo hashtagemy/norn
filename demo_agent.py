@@ -9,9 +9,19 @@ Dashboard: http://localhost:3000
 
 import logging
 import os
+from pathlib import Path
 
 # Suppress all logs — only conversation output in terminal
 logging.disable(logging.CRITICAL)
+
+# ── Workspace isolation ─────────────────────────────────────
+# Agent'ın yazdığı dosyalar proje kökünü kirletmesin.
+# Tüm output norn_logs/workspace/demo/ altında toplanır.
+_NORN_ROOT = Path(__file__).parent
+_WORKSPACE = _NORN_ROOT / "norn_logs" / "workspace" / "demo"
+_WORKSPACE.mkdir(parents=True, exist_ok=True)
+os.chdir(_WORKSPACE)
+os.environ["NORN_WORKSPACE"] = str(_WORKSPACE)
 
 from norn import NornHook
 from strands import Agent

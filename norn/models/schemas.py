@@ -152,6 +152,10 @@ class SessionReport(BaseModel):
     efficiency_explanation: str = ""  # Why the efficiency score is what it is
     recommendations: list[str] = Field(default_factory=list)
 
+    # Multi-agent swarm tracking
+    swarm_id: Optional[str] = None   # Shared ID across agents in the same swarm
+    swarm_order: Optional[int] = None  # Position in the swarm pipeline (1 = first)
+
 
 class TestCase(BaseModel):
     """Automated test case for agent quality."""

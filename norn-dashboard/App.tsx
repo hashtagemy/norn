@@ -7,6 +7,7 @@ import { AddAgent } from './components/AddAgent';
 import { AuditLogView } from './components/AuditLogView';
 import { ConfigView } from './components/ConfigView';
 import { BrowserAuditView } from './components/BrowserAuditView';
+import { SwarmView } from './components/SwarmView';
 import { api, SessionData } from './services/api';
 import { Session, QualityLevel, IssueType, AgentStep, SessionIssueDetail } from './types';
 
@@ -307,6 +308,8 @@ const App: React.FC = () => {
           );
         }
         return <div>No selection</div>;
+      case 'swarms':
+        return <SwarmView />;
       case 'browser_audit':
         return <BrowserAuditView sessions={sessions} />;
       case 'logs':

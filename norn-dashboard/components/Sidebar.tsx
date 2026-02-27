@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Settings, FileText, Ghost, Plus, Globe } from 'lucide-react';
+import { LayoutDashboard, Settings, FileText, Ghost, Plus, Globe, Network } from 'lucide-react';
 
 interface SidebarProps {
   currentView: string;
@@ -9,6 +9,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
   const navItems = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'swarms', label: 'Swarm Monitor', icon: Network },
     { id: 'browser_audit', label: 'Browser Audit', icon: Globe },
     { id: 'logs', label: 'Audit Logs', icon: FileText },
     { id: 'settings', label: 'Configuration', icon: Settings },

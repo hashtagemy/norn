@@ -1275,11 +1275,18 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
     
     session_file = SESSIONS_DIR / f"{session_id}.json"
     start_time = time.time()
-    
+
+    # Per-session workspace: agent file output goes here, not the project root
+    workspace_dir = LOGS_DIR / "workspace" / session_id
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
     try:
         # Load current session
         with open(session_file) as f:
             session = json.load(f)
+
+        # Record workspace path in session for dashboard visibility
+        session["workspace"] = str(workspace_dir)
         
         # Load config
         config = {}
@@ -1464,7 +1471,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
 
             result = subprocess.run(
                 cmd,
-                cwd=cwd,
+                cwd=str(workspace_dir),
                 capture_output=True,
                 text=True,
                 timeout=300,
@@ -1473,7 +1480,10 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                     "NORN_SESSION_ID": session_id,
                     "NORN_ENABLED": "true",
                     "NORN_MODE": config.get("mode", "monitor"),
-                    "NORN_TASK": task
+                    "NORN_TASK": task,
+                    "NORN_WORKSPACE": str(workspace_dir),
+                    # Keep agent source importable
+                    "PYTHONPATH": cwd + os.pathsep + os.environ.get("PYTHONPATH", ""),
                 }
             )
             
@@ -1494,7 +1504,11 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
             if hasattr(agent_instance, 'hooks') and hasattr(agent_instance.hooks, 'add_hook'):
                 agent_instance.hooks.add_hook(guard)
             
-            # Execute agent with task
+            # Execute agent with task — run inside workspace so file outputs
+            # go to the isolated session directory, not the project root.
+            os.environ["NORN_WORKSPACE"] = str(workspace_dir)
+            _original_cwd = os.getcwd()
+            os.chdir(workspace_dir)
             try:
                 result = agent_instance(task)
 
@@ -1568,6 +1582,9 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                     "description": f"Agent execution error: {str(e)}",
                     "recommendation": "Check agent code and dependencies"
                 })
+            finally:
+                # Always restore original working directory after in-process execution
+                os.chdir(_original_cwd)
         
         # Save session
         with open(session_file, 'w') as f:
@@ -1992,6 +2009,11 @@ def ingest_session(data: Dict[str, Any]) -> Dict[str, Any]:
             existing["ended_at"] = None
             if data.get("task") and not existing.get("task"):
                 existing["task"] = data["task"]
+            # Backfill swarm fields if not yet set
+            if data.get("swarm_id") and not existing.get("swarm_id"):
+                existing["swarm_id"] = data["swarm_id"]
+            if data.get("swarm_order") is not None and existing.get("swarm_order") is None:
+                existing["swarm_order"] = data["swarm_order"]
             _atomic_write_json(session_file, existing)
             logger.info("Session resumed: %s (%d existing steps)", session_id, len(existing.get("steps", [])))
             return existing
@@ -2024,6 +2046,9 @@ def ingest_session(data: Dict[str, Any]) -> Dict[str, Any]:
         "tool_analysis": [],
         "decision_observations": [],
         "efficiency_explanation": "",
+        # Multi-agent swarm tracking
+        "swarm_id": data.get("swarm_id"),
+        "swarm_order": data.get("swarm_order"),
     }
 
     _atomic_write_json(session_file, session_data)
@@ -2114,6 +2139,131 @@ def delete_session(session_id: str) -> Dict[str, str]:
         return {"status": "deleted", "id": session_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Swarm Endpoints ────────────────────────────────────────────────────────
+
+
+def _load_all_sessions() -> list[dict]:
+    """Load all session JSON files from SESSIONS_DIR."""
+    sessions = []
+    if not SESSIONS_DIR.exists():
+        return sessions
+    for f in SESSIONS_DIR.glob("*.json"):
+        try:
+            with open(f) as fp:
+                sessions.append(json.load(fp))
+        except Exception:
+            pass
+    return sessions
+
+
+def _drift_score(sessions: list[dict]) -> float:
+    """
+    Calculate collective drift: how much do later agents' tasks diverge
+    from the first agent's task in the swarm?
+
+    Uses simple word-overlap (Jaccard similarity) — no embeddings needed.
+    Returns a float 0.0–1.0 where 1.0 means perfect alignment (no drift).
+    """
+    if len(sessions) < 2:
+        return 1.0
+
+    sorted_sessions = sorted(sessions, key=lambda s: s.get("swarm_order") or 0)
+    first_task = (sorted_sessions[0].get("task") or "").lower().split()
+    if not first_task:
+        return 1.0
+
+    first_set = set(first_task)
+    scores = []
+    for s in sorted_sessions[1:]:
+        other_task = (s.get("task") or "").lower().split()
+        if not other_task:
+            scores.append(0.0)
+            continue
+        other_set = set(other_task)
+        intersection = first_set & other_set
+        union = first_set | other_set
+        scores.append(len(intersection) / len(union) if union else 1.0)
+
+    return round(sum(scores) / len(scores), 3) if scores else 1.0
+
+
+@app.get("/api/swarms")
+def list_swarms() -> list[dict]:
+    """
+    Return all swarm groups: sessions that share a swarm_id,
+    summarised into one card per swarm.
+    """
+    all_sessions = _load_all_sessions()
+
+    # Group by swarm_id (only sessions that have one)
+    groups: dict[str, list[dict]] = {}
+    for s in all_sessions:
+        sid = s.get("swarm_id")
+        if sid:
+            groups.setdefault(sid, []).append(s)
+
+    swarms = []
+    for swarm_id, members in groups.items():
+        sorted_members = sorted(members, key=lambda s: s.get("swarm_order") or 0)
+
+        quality_counts: dict[str, int] = {}
+        for m in members:
+            q = m.get("overall_quality", "PENDING")
+            quality_counts[q] = quality_counts.get(q, 0) + 1
+
+        # Overall swarm quality = worst individual quality
+        priority = ["FAILED", "STUCK", "POOR", "PENDING", "GOOD", "EXCELLENT"]
+        overall = "PENDING"
+        for q in priority:
+            if quality_counts.get(q):
+                overall = q
+                break
+
+        swarms.append({
+            "swarm_id": swarm_id,
+            "agent_count": len(members),
+            "overall_quality": overall,
+            "drift_score": _drift_score(members),
+            "started_at": min((m.get("started_at") or "") for m in members),
+            "ended_at": max((m.get("ended_at") or "") for m in members),
+            "agents": [
+                {
+                    "session_id": m.get("session_id"),
+                    "agent_name": m.get("agent_name"),
+                    "swarm_order": m.get("swarm_order"),
+                    "overall_quality": m.get("overall_quality", "PENDING"),
+                    "efficiency_score": m.get("efficiency_score"),
+                    "security_score": m.get("security_score"),
+                    "task": m.get("task"),
+                    "status": m.get("status"),
+                    "total_steps": m.get("total_steps", 0),
+                }
+                for m in sorted_members
+            ],
+        })
+
+    # Most recent swarms first
+    swarms.sort(key=lambda s: s.get("started_at") or "", reverse=True)
+    return swarms
+
+
+@app.get("/api/swarms/{swarm_id}")
+def get_swarm(swarm_id: str) -> dict:
+    """Return full detail for a single swarm."""
+    all_sessions = _load_all_sessions()
+    members = [s for s in all_sessions if s.get("swarm_id") == swarm_id]
+    if not members:
+        raise HTTPException(status_code=404, detail="Swarm not found")
+
+    sorted_members = sorted(members, key=lambda s: s.get("swarm_order") or 0)
+    return {
+        "swarm_id": swarm_id,
+        "agent_count": len(members),
+        "drift_score": _drift_score(members),
+        "sessions": sorted_members,
+    }
 
 
 if __name__ == "__main__":

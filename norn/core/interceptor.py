@@ -74,8 +74,10 @@ class NornHook(HookProvider):
         on_issue: Optional[Callable] = None,
         session_id: Optional[str] = None,
         audit_logger: Optional[Any] = None,
-        norn_url: Optional[str] = None,  # Dashboard API URL
-        agent_name: Optional[str] = None,         # Human-readable agent name
+        norn_url: Optional[str] = None,    # Dashboard API URL
+        agent_name: Optional[str] = None,  # Human-readable agent name
+        swarm_id: Optional[str] = None,    # Multi-agent swarm group ID
+        swarm_order: Optional[int] = None, # Position in swarm pipeline (1-based)
     ):
         # Task definition
         if isinstance(task, str):
@@ -91,6 +93,10 @@ class NornHook(HookProvider):
         self.enable_shadow_browser = enable_shadow_browser
         self.on_issue = on_issue
         self.session_id = session_id
+
+        # Swarm tracking
+        self.swarm_id = swarm_id
+        self.swarm_order = swarm_order
 
         # Components
         self.step_analyzer = StepAnalyzer(
@@ -170,6 +176,8 @@ class NornHook(HookProvider):
             agent_name=self._agent_name,
             model=model_name,
             task=self.task,
+            swarm_id=self.swarm_id,
+            swarm_order=self.swarm_order,
         )
 
         # Apply session ID: fixed slug takes priority, then caller-provided ID
@@ -614,6 +622,8 @@ class NornHook(HookProvider):
                 "task": self.task.description if self.task else "",
                 "started_at": self._session_report.started_at.isoformat(),
                 "model": self._session_report.model,
+                "swarm_id": self.swarm_id,
+                "swarm_order": self.swarm_order,
             })
             # Resume step counter from existing session
             if resp:
@@ -678,6 +688,8 @@ class NornHook(HookProvider):
                 "tool_analysis": report.tool_analysis or [],
                 "decision_observations": report.decision_observations or [],
                 "efficiency_explanation": report.efficiency_explanation or "",
+                "swarm_id": report.swarm_id,
+                "swarm_order": report.swarm_order,
             }
         )
 
