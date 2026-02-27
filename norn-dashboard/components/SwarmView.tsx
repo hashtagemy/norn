@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Network, ChevronDown, ChevronRight, ArrowRight, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { Network, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, Clock, ArrowDown, MessageSquare } from 'lucide-react';
 import { api } from '../services/api';
 
 interface SwarmAgent {
@@ -12,6 +12,7 @@ interface SwarmAgent {
   task: string;
   status: string;
   total_steps: number;
+  handoff_input?: string | null;
 }
 
 interface Swarm {
@@ -41,6 +42,56 @@ const driftLabel = (score: number) => {
   if (pct >= 50) return { label: 'Slight Drift', color: 'text-yellow-400' };
   return { label: 'High Drift', color: 'text-red-400' };
 };
+
+// Collapsible handoff data bubble shown between two agents
+const HandoffConnector: React.FC<{ data: string }> = ({ data }) => {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = data.length > 160;
+
+  return (
+    <div className="flex flex-col items-center w-full">
+      {/* Top stem */}
+      <div className="w-px h-3 bg-phantom-900/40" />
+
+      {/* Handoff pill */}
+      <div className="w-full pl-9 pr-0">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full text-left bg-phantom-950/20 border border-phantom-900/30 rounded-lg px-3 py-2.5 hover:bg-phantom-950/30 transition-colors group"
+        >
+          {/* Header row */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <MessageSquare size={11} className="text-phantom-400 flex-shrink-0" />
+            <span className="text-[10px] font-semibold text-phantom-400 uppercase tracking-wider">
+              Handoff
+            </span>
+            {isLong && (
+              <span className="ml-auto text-[10px] text-gray-600 group-hover:text-gray-400 transition-colors">
+                {expanded ? 'collapse ▲' : 'expand ▼'}
+              </span>
+            )}
+          </div>
+          {/* Content */}
+          <p className={`text-xs text-gray-400 leading-relaxed whitespace-pre-wrap break-words ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
+            {data}
+          </p>
+        </button>
+      </div>
+
+      {/* Bottom stem + arrow */}
+      <div className="w-px h-3 bg-phantom-900/40" />
+      <ArrowDown size={10} className="text-phantom-700" />
+    </div>
+  );
+};
+
+// Simple connector (no handoff data)
+const SimpleConnector: React.FC = () => (
+  <div className="flex flex-col items-center">
+    <div className="w-px h-3 bg-phantom-900/40" />
+    <ArrowDown size={10} className="text-phantom-700" />
+  </div>
+);
 
 const SwarmCard: React.FC<{ swarm: Swarm }> = ({ swarm }) => {
   const [expanded, setExpanded] = useState(false);
@@ -97,66 +148,81 @@ const SwarmCard: React.FC<{ swarm: Swarm }> = ({ swarm }) => {
 
       {/* Agent Pipeline */}
       {expanded && (
-        <div className="border-t border-dark-border px-5 py-4 space-y-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        <div className="border-t border-dark-border px-5 py-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
             Agent Pipeline
           </div>
-          <div className="flex flex-col gap-2">
-            {swarm.agents.map((agent, idx) => (
-              <div key={agent.session_id} className="flex items-start gap-3">
-                {/* Step number + arrow */}
-                <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-1">
-                  <div className="w-6 h-6 rounded-full bg-phantom-950/60 border border-phantom-900/50 flex items-center justify-center">
-                    <span className="text-xs font-bold text-phantom-300">{agent.swarm_order ?? idx + 1}</span>
-                  </div>
-                  {idx < swarm.agents.length - 1 && (
-                    <div className="flex flex-col items-center gap-0.5">
-                      <div className="w-px h-4 bg-phantom-900/40" />
-                      <ArrowRight size={10} className="text-phantom-700 -rotate-90" />
-                    </div>
-                  )}
-                </div>
 
-                {/* Agent card */}
-                <div className="flex-1 bg-dark-bg border border-dark-border rounded-lg px-4 py-3 mb-1">
-                  <div className="flex items-center justify-between gap-3 mb-1">
-                    <span className="text-sm font-medium text-gray-200">{agent.agent_name}</span>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${qualityColor(agent.overall_quality)}`}>
-                        {agent.overall_quality}
-                      </span>
-                      {agent.status === 'running' && (
-                        <span className="flex items-center gap-1 text-xs text-phantom-400">
-                          <span className="animate-ping w-1.5 h-1.5 rounded-full bg-phantom-400 inline-block" />
-                          Running
+          <div className="flex flex-col">
+            {swarm.agents.map((agent, idx) => (
+              <React.Fragment key={agent.session_id}>
+                {/* Agent row */}
+                <div className="flex items-start gap-3">
+                  {/* Step badge */}
+                  <div className="flex flex-col items-center flex-shrink-0 pt-1 w-6">
+                    <div className="w-6 h-6 rounded-full bg-phantom-950/60 border border-phantom-900/50 flex items-center justify-center">
+                      <span className="text-xs font-bold text-phantom-300">{agent.swarm_order ?? idx + 1}</span>
+                    </div>
+                  </div>
+
+                  {/* Agent card */}
+                  <div className="flex-1 bg-dark-bg border border-dark-border rounded-lg px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <span className="text-sm font-medium text-gray-200">{agent.agent_name}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${qualityColor(agent.overall_quality)}`}>
+                          {agent.overall_quality}
+                        </span>
+                        {agent.status === 'running' && (
+                          <span className="flex items-center gap-1 text-xs text-phantom-400">
+                            <span className="animate-ping w-1.5 h-1.5 rounded-full bg-phantom-400 inline-block" />
+                            Running
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Task */}
+                    {agent.task && (
+                      <p className="text-xs text-gray-400 mb-2 line-clamp-2">{agent.task}</p>
+                    )}
+
+                    {/* Scores */}
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <span>{agent.total_steps} steps</span>
+                      {agent.efficiency_score != null && (
+                        <span className="flex items-center gap-1">
+                          <CheckCircle size={11} className="text-blue-400" />
+                          Eff {agent.efficiency_score}%
+                        </span>
+                      )}
+                      {agent.security_score != null && (
+                        <span className={`flex items-center gap-1 ${agent.security_score < 70 ? 'text-red-400' : 'text-gray-500'}`}>
+                          {agent.security_score < 70 && <AlertTriangle size={11} />}
+                          Sec {agent.security_score}%
                         </span>
                       )}
                     </div>
                   </div>
-
-                  {/* Task */}
-                  {agent.task && (
-                    <p className="text-xs text-gray-400 mb-2 line-clamp-2">{agent.task}</p>
-                  )}
-
-                  {/* Scores */}
-                  <div className="flex items-center gap-4 text-xs text-gray-500">
-                    <span>{agent.total_steps} steps</span>
-                    {agent.efficiency_score != null && (
-                      <span className="flex items-center gap-1">
-                        <CheckCircle size={11} className="text-blue-400" />
-                        Eff {agent.efficiency_score}%
-                      </span>
-                    )}
-                    {agent.security_score != null && (
-                      <span className={`flex items-center gap-1 ${agent.security_score < 70 ? 'text-red-400' : 'text-gray-500'}`}>
-                        {agent.security_score < 70 && <AlertTriangle size={11} />}
-                        Sec {agent.security_score}%
-                      </span>
-                    )}
-                  </div>
                 </div>
-              </div>
+
+                {/* Connector between this agent and the next */}
+                {idx < swarm.agents.length - 1 && (
+                  <div className="flex items-start gap-3 py-0.5">
+                    {/* Spine alignment — same width as step badge col */}
+                    <div className="w-6 flex-shrink-0 flex justify-center">
+                      <div className="w-px bg-phantom-900/40 h-full min-h-[8px]" />
+                    </div>
+                    {/* Handoff or simple arrow */}
+                    <div className="flex-1 -mt-0.5">
+                      {swarm.agents[idx + 1].handoff_input
+                        ? <HandoffConnector data={swarm.agents[idx + 1].handoff_input!} />
+                        : <SimpleConnector />
+                      }
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
             ))}
           </div>
         </div>
@@ -207,12 +273,14 @@ export const SwarmView: React.FC = () => {
         </button>
       </div>
 
-      {/* Drift explanation */}
+      {/* Info box */}
       <div className="bg-dark-surface border border-dark-border rounded-xl p-4 text-xs text-gray-400 space-y-1">
         <p className="font-medium text-gray-300">What is Alignment Score?</p>
         <p>
           Measures how closely each agent's task aligns with the first agent's intent in the swarm.
           100% = all agents work toward the same goal · &lt;50% = significant topic drift.
+          Pass <code className="text-phantom-300 bg-phantom-950/30 px-1 rounded">handoff_input</code> to{' '}
+          <code className="text-phantom-300 bg-phantom-950/30 px-1 rounded">NornHook</code> to see inter-agent messages.
         </p>
       </div>
 
@@ -237,10 +305,18 @@ export const SwarmView: React.FC = () => {
             multiple agents into a monitored pipeline.
           </p>
           <pre className="mt-4 text-left text-xs bg-dark-surface border border-dark-border rounded-lg p-4 text-gray-400 max-w-sm">
-{`hook = NornHook(
+{`hook_a = NornHook(
   swarm_id="my-pipeline",
   swarm_order=1,
   agent_name="Researcher"
+)
+result = agent_a("Research AI trends")
+
+hook_b = NornHook(
+  swarm_id="my-pipeline",
+  swarm_order=2,
+  agent_name="Writer",
+  handoff_input=str(result)[:500]
 )`}
           </pre>
         </div>

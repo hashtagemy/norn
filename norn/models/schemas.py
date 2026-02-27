@@ -153,8 +153,9 @@ class SessionReport(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
 
     # Multi-agent swarm tracking
-    swarm_id: Optional[str] = None   # Shared ID across agents in the same swarm
-    swarm_order: Optional[int] = None  # Position in the swarm pipeline (1 = first)
+    swarm_id: Optional[str] = None        # Shared ID across agents in the same swarm
+    swarm_order: Optional[int] = None     # Position in the swarm pipeline (1 = first)
+    handoff_input: Optional[str] = None  # Data received from the previous agent in the swarm
 
 
 class TestCase(BaseModel):

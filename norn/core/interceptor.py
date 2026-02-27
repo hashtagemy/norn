@@ -76,8 +76,9 @@ class NornHook(HookProvider):
         audit_logger: Optional[Any] = None,
         norn_url: Optional[str] = None,    # Dashboard API URL
         agent_name: Optional[str] = None,  # Human-readable agent name
-        swarm_id: Optional[str] = None,    # Multi-agent swarm group ID
-        swarm_order: Optional[int] = None, # Position in swarm pipeline (1-based)
+        swarm_id: Optional[str] = None,       # Multi-agent swarm group ID
+        swarm_order: Optional[int] = None,    # Position in swarm pipeline (1-based)
+        handoff_input: Optional[str] = None,  # Data received from the previous agent
     ):
         # Task definition
         if isinstance(task, str):
@@ -97,6 +98,7 @@ class NornHook(HookProvider):
         # Swarm tracking
         self.swarm_id = swarm_id
         self.swarm_order = swarm_order
+        self.handoff_input = handoff_input
 
         # Components
         self.step_analyzer = StepAnalyzer(
@@ -178,6 +180,7 @@ class NornHook(HookProvider):
             task=self.task,
             swarm_id=self.swarm_id,
             swarm_order=self.swarm_order,
+            handoff_input=self.handoff_input,
         )
 
         # Apply session ID: fixed slug takes priority, then caller-provided ID
@@ -624,6 +627,7 @@ class NornHook(HookProvider):
                 "model": self._session_report.model,
                 "swarm_id": self.swarm_id,
                 "swarm_order": self.swarm_order,
+                "handoff_input": self.handoff_input,
             })
             # Resume step counter from existing session
             if resp:
@@ -690,6 +694,7 @@ class NornHook(HookProvider):
                 "efficiency_explanation": report.efficiency_explanation or "",
                 "swarm_id": report.swarm_id,
                 "swarm_order": report.swarm_order,
+                "handoff_input": report.handoff_input,
             }
         )
 

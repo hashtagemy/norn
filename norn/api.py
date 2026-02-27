@@ -2049,6 +2049,7 @@ def ingest_session(data: Dict[str, Any]) -> Dict[str, Any]:
         # Multi-agent swarm tracking
         "swarm_id": data.get("swarm_id"),
         "swarm_order": data.get("swarm_order"),
+        "handoff_input": data.get("handoff_input"),
     }
 
     _atomic_write_json(session_file, session_data)
@@ -2239,6 +2240,7 @@ def list_swarms() -> list[dict]:
                     "task": m.get("task"),
                     "status": m.get("status"),
                     "total_steps": m.get("total_steps", 0),
+                    "handoff_input": m.get("handoff_input"),
                 }
                 for m in sorted_members
             ],
