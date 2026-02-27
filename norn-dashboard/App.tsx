@@ -147,6 +147,16 @@ const App: React.FC = () => {
         const relScore = step.relevance_score;
         const riskScore = secScore != null ? Math.max(0, 100 - secScore) : null;
 
+        // Pure-reasoning agent step (no tool calls — e.g. Thinker)
+        if (step.tool_name === 'ai_reasoning') {
+          steps.push({
+            id: step.step_id || String(stepIdx),
+            timestamp: step.timestamp,
+            type: 'agent_thought',
+            content: step.tool_result || '',
+            metadata: { toolName: 'ai_reasoning' }
+          });
+        } else {
         // Tool call step
         steps.push({
           id: step.step_id || String(stepIdx),
@@ -171,6 +181,7 @@ const App: React.FC = () => {
             }
           });
         }
+        } // end non-reasoning branch
 
         // Norn check step (security/relevance evaluation)
         if (step.reasoning) {
@@ -309,7 +320,7 @@ const App: React.FC = () => {
         }
         return <div>No selection</div>;
       case 'swarms':
-        return <SwarmView />;
+        return <SwarmView onSelectSession={handleSessionSelect} />;
       case 'browser_audit':
         return <BrowserAuditView sessions={sessions} />;
       case 'logs':

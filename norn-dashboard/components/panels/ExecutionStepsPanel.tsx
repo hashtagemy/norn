@@ -1,6 +1,6 @@
 import React from 'react';
 import { Session } from '../../types';
-import { Terminal, AlertCircle, AlertTriangle, Info, XCircle, Trash2 } from 'lucide-react';
+import { Terminal, AlertCircle, AlertTriangle, Info, XCircle, Trash2, Brain } from 'lucide-react';
 
 interface ExecutionStepsPanelProps {
   session: Session;
@@ -91,6 +91,7 @@ export const ExecutionStepsPanel: React.FC<ExecutionStepsPanelProps> = ({ sessio
                 step.metadata?.riskScore == null ? 'bg-gray-500' :
                 step.metadata.riskScore > 50 ? 'bg-red-500' : 'bg-emerald-500'
               ) :
+              step.type === 'agent_thought' ? 'bg-purple-500' :
               step.type === 'tool_result' ? 'bg-cyan-500' :
               step.type === 'user' ? 'bg-blue-500' : 'bg-gray-600'
             }`}></div>
@@ -111,15 +112,17 @@ export const ExecutionStepsPanel: React.FC<ExecutionStepsPanelProps> = ({ sessio
                 <span className="text-[10px] font-mono text-gray-500">
                   {step.timestamp ? new Date(step.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''}
                 </span>
-                <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded flex items-center gap-1 ${
                   step.type === 'phantom_check' ? 'bg-phantom-950 text-phantom-400' :
+                  step.type === 'agent_thought' ? 'bg-purple-950/40 text-purple-300' :
                   step.type === 'tool_call' ? 'bg-orange-950/30 text-orange-400' :
                   step.type === 'tool_result' ? 'bg-cyan-950/30 text-cyan-400' :
                   step.type === 'user' ? 'bg-blue-950/30 text-blue-400' : 'bg-gray-800 text-gray-400'
                 }`}>
-                  {step.type.replace(/_/g, ' ')}
+                  {step.type === 'agent_thought' && <Brain size={9} />}
+                  {step.type === 'agent_thought' ? 'AI Reasoning' : step.type.replace(/_/g, ' ')}
                 </span>
-                {step.metadata?.toolName && (
+                {step.metadata?.toolName && step.type !== 'agent_thought' && (
                   <span className="text-[10px] text-gray-500">&rarr; {step.metadata.toolName}</span>
                 )}
               </div>
@@ -129,6 +132,7 @@ export const ExecutionStepsPanel: React.FC<ExecutionStepsPanelProps> = ({ sessio
                   ? (step.metadata?.riskScore == null ? 'bg-gray-900/10 border-gray-800/30 text-gray-400' :
                      step.metadata.riskScore > 0 ? 'bg-red-950/10 border-red-900/30 text-red-200' :
                      'bg-emerald-950/10 border-emerald-900/30 text-emerald-200')
+                  : step.type === 'agent_thought' ? 'bg-purple-950/10 border-purple-900/20 text-purple-100'
                   : step.type === 'tool_result' ? 'bg-cyan-950/5 border-cyan-900/20 text-gray-400'
                   : 'bg-black/30 border-dark-border text-gray-300'
               }`}>

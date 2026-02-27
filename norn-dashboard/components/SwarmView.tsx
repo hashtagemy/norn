@@ -93,7 +93,7 @@ const SimpleConnector: React.FC = () => (
   </div>
 );
 
-const SwarmCard: React.FC<{ swarm: Swarm }> = ({ swarm }) => {
+const SwarmCard: React.FC<{ swarm: Swarm; onSelectSession?: (id: string) => void }> = ({ swarm, onSelectSession }) => {
   const [expanded, setExpanded] = useState(false);
   const drift = driftLabel(swarm.drift_score);
   const driftPct = Math.round(swarm.drift_score * 100);
@@ -166,7 +166,10 @@ const SwarmCard: React.FC<{ swarm: Swarm }> = ({ swarm }) => {
                   </div>
 
                   {/* Agent card */}
-                  <div className="flex-1 bg-dark-bg border border-dark-border rounded-lg px-4 py-3">
+                  <div
+                    className={`flex-1 bg-dark-bg border border-dark-border rounded-lg px-4 py-3 ${onSelectSession && agent.session_id ? 'cursor-pointer hover:border-phantom-700 hover:bg-dark-surface transition-colors' : ''}`}
+                    onClick={() => onSelectSession && agent.session_id && onSelectSession(agent.session_id)}
+                  >
                     <div className="flex items-center justify-between gap-3 mb-1">
                       <span className="text-sm font-medium text-gray-200">{agent.agent_name}</span>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -231,7 +234,7 @@ const SwarmCard: React.FC<{ swarm: Swarm }> = ({ swarm }) => {
   );
 };
 
-export const SwarmView: React.FC = () => {
+export const SwarmView: React.FC<{ onSelectSession?: (id: string) => void }> = ({ onSelectSession }) => {
   const [swarms, setSwarms] = useState<Swarm[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -323,7 +326,7 @@ hook_b = NornHook(
       ) : (
         <div className="space-y-3">
           {swarms.map(swarm => (
-            <SwarmCard key={swarm.swarm_id} swarm={swarm} />
+            <SwarmCard key={swarm.swarm_id} swarm={swarm} onSelectSession={onSelectSession} />
           ))}
         </div>
       )}

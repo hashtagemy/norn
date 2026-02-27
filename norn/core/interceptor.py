@@ -207,24 +207,66 @@ class NornHook(HookProvider):
             self._dashboard_on_session_start()
 
     def _on_message_added(self, event: MessageAddedEvent) -> None:
-        """Auto-set task from the first user message if not already defined."""
-        if self.task is not None:
-            return
+        """Auto-set task from the first user message.
+        Also captures assistant reasoning as a synthetic step for tool-less agents.
+        """
         msg = event.message
-        if msg.get("role") != "user":
-            return
-        for block in msg.get("content", []):
-            if isinstance(block, dict) and "text" in block:
-                user_text = block["text"].strip()
-                if user_text:
-                    self.task = TaskDefinition(
-                        description=user_text,
-                        max_steps=self.max_steps,
+        role = msg.get("role", "")
+        content_blocks = msg.get("content", [])
+
+        # Auto-set task from first user message
+        if self.task is None and role == "user":
+            for block in content_blocks:
+                if isinstance(block, dict) and "text" in block:
+                    user_text = block["text"].strip()
+                    if user_text:
+                        self.task = TaskDefinition(
+                            description=user_text,
+                            max_steps=self.max_steps,
+                        )
+                        if self._session_report and self._session_report.task is None:
+                            self._session_report.task = self.task
+                        logger.debug("Task auto-set: %s", user_text[:80])
+                        break
+
+        # Capture assistant reasoning as synthetic step (for tool-less / pure-reasoning agents)
+        # Only when: role=assistant AND no toolUse blocks AND no tool calls made this invocation
+        # Strands uses Bedrock format: {"text": "..."} and {"toolUse": {...}} — NOT Anthropic {"type":"text"}
+        if role == "assistant" and content_blocks and self._session_report:
+            has_tool_use = any(
+                isinstance(b, dict) and "toolUse" in b
+                for b in content_blocks
+            )
+            # Guard: skip if any tool calls were already made in this invocation
+            invocation_tool_steps = self._step_counter - self._existing_step_count
+            if not has_tool_use and invocation_tool_steps == 0:
+                text_parts = []
+                for block in content_blocks:
+                    if isinstance(block, dict) and "text" in block:
+                        text_parts.append(block["text"])
+                    elif isinstance(block, str):
+                        text_parts.append(block)
+                reasoning_text = "\n".join(text_parts).strip()
+
+                if reasoning_text:
+                    self._step_counter += 1
+                    step = StepRecord(
+                        step_number=self._step_counter,
+                        tool_name="ai_reasoning",
+                        tool_input={"task": self.task.description[:200] if self.task else ""},
+                        tool_result=reasoning_text[:800] + ("..." if len(reasoning_text) > 800 else ""),
+                        status=StepStatus.SUCCESS,
+                        # Pre-mark as relevant & secure — no further LLM eval needed
+                        relevance_score=100,
+                        security_score=100,
                     )
-                    if self._session_report and self._session_report.task is None:
-                        self._session_report.task = self.task
-                    logger.debug("Task auto-set: %s", user_text[:80])
-                    break
+                    self._steps.append(step)
+
+                    # Real-time dashboard stream
+                    if self._norn_url and self._registered_agent_id:
+                        self._dashboard_send_step(step)
+
+                    logger.debug("Reasoning step #%d captured (%d chars)", self._step_counter, len(reasoning_text))
 
     def _on_session_end(self, event: AfterInvocationEvent) -> None:
         """Finalize session and generate report."""

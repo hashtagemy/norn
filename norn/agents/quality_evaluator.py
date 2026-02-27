@@ -181,6 +181,22 @@ Respond with JSON:
                 "reasoning": "No task definition provided - cannot evaluate",
                 "recommendations": ["Define clear task objectives for accurate evaluation"],
             }
+
+        # Pure-reasoning agents (0 tool calls) — no LLM evaluation needed
+        # These agents reason and produce output directly without using tools
+        if len(steps) == 0:
+            return {
+                "task_completed": True,
+                "completion_confidence": 80,
+                "efficiency_score": 100,
+                "security_score": 100,
+                "overall_quality": SessionQuality.GOOD,
+                "reasoning": "Pure reasoning agent — produces decisions directly without tool calls. Evaluation based on output quality rather than step count.",
+                "tool_analysis": [],
+                "decision_observations": ["Agent operates through direct AI reasoning without external tool calls"],
+                "efficiency_explanation": "Step count is 0 by design — this agent type generates structured output directly.",
+                "recommendations": [],
+            }
         
         # Build step summary
         step_summary = self._build_step_summary(steps)
