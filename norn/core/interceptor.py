@@ -109,10 +109,13 @@ class NornHook(HookProvider):
         # Task definition
         if isinstance(task, str):
             self.task = TaskDefinition(description=task, max_steps=max_steps)
+            self._explicit_task = True   # Explicitly provided — persists across invocations
         elif isinstance(task, TaskDefinition):
             self.task = task
+            self._explicit_task = True
         else:
             self.task = None
+            self._explicit_task = False  # Auto-detected from first user message
 
         self.mode = GuardMode(mode)
         self.max_steps = max_steps
@@ -179,6 +182,10 @@ class NornHook(HookProvider):
         self._pending_tasks = []
         self._steps_to_evaluate = []
         self.step_analyzer.reset()
+        # Reset auto-detected task so it gets re-captured from THIS invocation's
+        # first user message. Explicit tasks (passed to constructor) persist as-is.
+        if not self._explicit_task:
+            self.task = None
 
         # Try to extract model name from the agent
         model_name = None
@@ -360,7 +367,7 @@ class NornHook(HookProvider):
 
             try:
                 with _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="norn-eval") as _exec:
-                    _exec.submit(_eval_target).result(timeout=60)
+                    _exec.submit(_eval_target).result(timeout=120)
             except Exception as e:
                 logger.error("AI evaluation failed: %s", e)
 

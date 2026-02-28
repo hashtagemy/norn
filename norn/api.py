@@ -132,8 +132,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# All paths derived from one env-configurable root
-LOGS_DIR = Path(os.environ.get("NORN_LOG_DIR", "norn_logs"))
+# All paths derived from one env-configurable root.
+# .resolve() converts to absolute path at startup — prevents os.chdir() in
+# in-process agent execution from breaking file reads in other threads.
+LOGS_DIR = Path(os.environ.get("NORN_LOG_DIR", "norn_logs")).resolve()
 SESSIONS_DIR = LOGS_DIR / "sessions"
 REGISTRY_FILE = LOGS_DIR / "agents_registry.json"
 CONFIG_FILE = LOGS_DIR / "config.json"
@@ -1400,6 +1402,14 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
        
         _added_sys_paths: list[str] = []
 
+        # Redirect stdin BEFORE module import so agents with top-level interactive
+        # code (input() loops at module scope) read from our controlled buffer
+        # instead of blocking on the real terminal. exec_module() runs all top-level
+        # code, so stdin must be redirected here — not after finding agent_instance.
+        import io as _io
+        _orig_stdin = sys.stdin
+        sys.stdin = _io.StringIO(f"{task}\nquit\nexit\nq\n")
+
         def _add_to_sys_path(p: str) -> None:
             if p not in sys.path:
                 sys.path.insert(0, p)
@@ -1518,12 +1528,18 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                 cmd = [sys.executable, str(main_file_path)]
                 cwd = agent_path
 
+            # Provide the task via stdin so interactive agents receive it.
+            # Also send common quit commands so agents that read input() in a loop
+            # can terminate gracefully instead of blocking/crashing on EOFError.
+            # capture_output=True keeps stdout/stderr captured; input= sets stdin to PIPE.
+            _stdin_input = f"{task}\nquit\nexit\nq\n"
             result = subprocess.run(
                 cmd,
                 cwd=str(workspace_dir),
                 capture_output=True,
                 text=True,
                 timeout=300,
+                input=_stdin_input,
                 env={
                     **os.environ,
                     "NORN_SESSION_ID": session_id,
@@ -1548,19 +1564,61 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                     "description": f"Agent execution failed: {result.stderr[:200]}",
                     "recommendation": "Check agent code and dependencies"
                 })
+            # Restore stdin redirected before module import
+            sys.stdin = _orig_stdin
         else:
             # Inject Norn hook into agent via HookRegistry
             if hasattr(agent_instance, 'hooks') and hasattr(agent_instance.hooks, 'add_hook'):
                 agent_instance.hooks.add_hook(guard)
-            
+
             # Execute agent with task — run inside workspace so file outputs
             # go to the isolated session directory, not the project root.
             os.environ["NORN_WORKSPACE"] = str(workspace_dir)
             with _chdir_lock:
                 _original_cwd = os.getcwd()
                 os.chdir(workspace_dir)
+
+            # stdin was already redirected before module import (see above).
+            # Just import the futures module needed for the timeout wrapper.
+            import concurrent.futures as _agent_cf
+
             try:
-                result = agent_instance(task)
+                # Wrap agent execution in a thread with a 5-minute timeout.
+                # In-process agents have no timeout otherwise — an agent blocked
+                # on input() or an infinite loop would hang the background thread forever.
+                def _run_agent():
+                    return agent_instance(task)
+
+                _agent_exec = _agent_cf.ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="norn-agent"
+                )
+                _agent_future = _agent_exec.submit(_run_agent)
+                try:
+                    result = _agent_future.result(timeout=300)
+                except _agent_cf.TimeoutError:
+                    _agent_exec.shutdown(wait=False)
+                    session["ended_at"] = datetime.now().isoformat()
+                    session["status"] = "terminated"
+                    session["total_execution_time_ms"] = int((time.time() - start_time) * 1000)
+                    session["issues"].append({
+                        "issue_type": "TIMEOUT",
+                        "severity": 8,
+                        "description": (
+                            "Agent execution exceeded 5-minute timeout. "
+                            "Agent may be waiting for interactive input (input() call) "
+                            "or stuck in an infinite loop."
+                        ),
+                        "recommendation": (
+                            "Ensure agent can run non-interactively. "
+                            "Remove input() calls or add a termination condition."
+                        )
+                    })
+                    _atomic_write_json(session_file, session)
+                    logger.info(f"Session {session_id} timed out (in-process)")
+                    _reset_agent_status(agent_id)
+                    return
+                finally:
+                    _agent_exec.shutdown(wait=False)
 
                 # Run session-level AI evaluation (step scores already populated by Strands loop)
                 try:
@@ -1570,7 +1628,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
 
                 # Get session report from guard
                 report = guard.get_session_report()
-                
+
                 # Update session with Norn data
                 session["ended_at"] = datetime.now().isoformat()
                 session["status"] = "completed"
@@ -1581,7 +1639,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                 session["task_completion"] = report.task_completion
                 session["loop_detected"] = report.loop_detected
                 session["total_execution_time_ms"] = int((time.time() - start_time) * 1000)
-                
+
                 # Add issues
                 for issue in report.issues:
                     session["issues"].append({
@@ -1590,7 +1648,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                         "description": issue.description,
                         "recommendation": issue.recommendation
                     })
-                
+
                 # Add steps
                 for step in report.steps:
                     session["steps"].append({
@@ -1605,7 +1663,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                         "security_score": step.security_score,
                         "reasoning": step.reasoning or ""
                     })
-                
+
                 # Add AI evaluation if available
                 if report.ai_evaluation:
                     session["ai_evaluation"] = report.ai_evaluation
@@ -1621,7 +1679,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
 
                 if report.recommendations:
                     session["recommendations"] = report.recommendations
-                
+
             except Exception as e:
                 session["ended_at"] = datetime.now().isoformat()
                 session["status"] = "terminated"
@@ -1633,7 +1691,8 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                     "recommendation": "Check agent code and dependencies"
                 })
             finally:
-                # Always restore original working directory after in-process execution
+                # Restore stdin and working directory after in-process execution
+                sys.stdin = _orig_stdin
                 with _chdir_lock:
                     os.chdir(_original_cwd)
                 # BUG-003: Clean up sys.path entries added for this agent

@@ -303,7 +303,20 @@ const App: React.FC = () => {
           return <SessionDetail session={session} onBack={() => setCurrentView('dashboard')} />;
         } else if (selectedAgentId) {
           const agent = agents.find(a => a.id === selectedAgentId);
-          if (!agent) return <div>Agent not found</div>;
+          if (!agent) return (
+            <div className="flex items-center justify-center h-full">
+              <div className="bg-dark-surface border border-dark-border rounded-xl p-8 text-center max-w-sm">
+                <h3 className="text-lg font-medium text-white mb-2">Agent not found</h3>
+                <p className="text-sm text-gray-400 mb-4">This agent may still be loading or was removed.</p>
+                <button
+                  onClick={() => { setCurrentView('dashboard'); setSelectedAgentId(null); setActiveRunSessionId(null); }}
+                  className="px-4 py-2 bg-phantom-600 hover:bg-phantom-500 text-white text-sm rounded-lg transition-colors"
+                >
+                  Return to Overview
+                </button>
+              </div>
+            </div>
+          );
           const currentSession = activeRunSessionId
             ? sessions.find(s => s.id === activeRunSessionId)
             : sessions
