@@ -1642,9 +1642,12 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
         _reset_agent_status(agent_id)
 
     except subprocess.TimeoutExpired:
-        # Handle timeout
-        with open(session_file) as f:
-            session = json.load(f)
+        # Handle timeout — BUG-v2-001: guard against missing/corrupt session file
+        try:
+            with open(session_file) as f:
+                session = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            session = {"session_id": session_id, "agent_id": agent_id, "status": "active", "steps": [], "issues": []}
 
         session["ended_at"] = datetime.now().isoformat()
         session["status"] = "terminated"
@@ -1665,10 +1668,13 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
         import traceback
         traceback.print_exc()
 
-        # Update session with error
+        # Update session with error — BUG-v2-001: guard against missing/corrupt session file
         try:
-            with open(session_file) as f:
-                session = json.load(f)
+            try:
+                with open(session_file) as f:
+                    session = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                session = {"session_id": session_id, "agent_id": agent_id, "status": "active", "steps": [], "issues": []}
 
             session["ended_at"] = datetime.now().isoformat()
             session["status"] = "terminated"

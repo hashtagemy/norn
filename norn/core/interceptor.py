@@ -932,7 +932,7 @@ class NornHook(HookProvider):
         report = SessionReport(
             session_id=self.session_id or f"session-{int(time.time())}",
             agent_name=self._agent_name,
-            task=self.task.description if self.task else "Unknown task",
+            task=self.task,  # BUG-v2-003 fix: pass TaskDefinition, not str
             total_steps=total_steps,
             overall_quality=quality,
             efficiency_score=efficiency_score,
