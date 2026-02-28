@@ -24,12 +24,10 @@ import threading
 
 logger = logging.getLogger("norn.api")
 
-# BUG-002: os.chdir() is process-global state. Serialize in-process agent
-# executions so concurrent requests don't corrupt each other's working directory.
+
 _chdir_lock = threading.Lock()
 
-# BUG-007: Agent registry is a shared JSON file. Serialize all read-modify-write
-# operations so concurrent imports/deletes don't clobber each other.
+
 _registry_lock = threading.Lock()
 
 
@@ -958,12 +956,25 @@ def import_github_agent(data: Dict[str, Any]) -> List[Dict[str, Any]]:
                 logger.info(f"pyproject.toml detected single-package agent: {pyproject_main}")
                 candidate_files = [pyproject_main]
             else:
-                # Scan for all agent files (max 4 levels deep)
-                candidate_files = sorted([
-                    p for p in clone_path.rglob("*.py")
-                    if len(p.relative_to(clone_path).parts) <= 4
-                    and _is_agent_file(p)
-                ], key=lambda p: p.name)
+                # Always ONE card per repo import.
+                # Pick the single best entry point; discovery runs on the whole clone_path dir.
+                # Priority: main.py > agent.py > app.py > run.py > __main__.py > first found
+                _ROOT_ENTRY_POINTS = ("main.py", "agent.py", "app.py", "run.py", "__main__.py")
+                root_entry = next(
+                    (clone_path / ep for ep in _ROOT_ENTRY_POINTS
+                     if (clone_path / ep).exists()),
+                    None,
+                )
+                if root_entry is None:
+                    # Fallback: deepest-last agent file in the repo
+                    all_found = sorted([
+                        p for p in clone_path.rglob("*.py")
+                        if len(p.relative_to(clone_path).parts) <= 4
+                        and _is_agent_file(p)
+                    ], key=lambda p: (len(p.relative_to(clone_path).parts), p.name))
+                    root_entry = all_found[0] if all_found else None
+
+                candidate_files = [root_entry] if root_entry else []
 
         if not candidate_files:
             available = [f.name for f in clone_path.rglob("*.py") if f.name != "__init__.py"]
@@ -1386,8 +1397,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
         )
         main_file_path = agent_path_obj / main_file
 
-        # Dynamically load agent module
-        # BUG-003: Track which paths we add so we can remove them after execution.
+       
         _added_sys_paths: list[str] = []
 
         def _add_to_sys_path(p: str) -> None:
@@ -1642,7 +1652,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
         _reset_agent_status(agent_id)
 
     except subprocess.TimeoutExpired:
-        # Handle timeout — BUG-v2-001: guard against missing/corrupt session file
+        
         try:
             with open(session_file) as f:
                 session = json.load(f)
@@ -1668,7 +1678,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
         import traceback
         traceback.print_exc()
 
-        # Update session with error — BUG-v2-001: guard against missing/corrupt session file
+        
         try:
             try:
                 with open(session_file) as f:
@@ -1730,7 +1740,7 @@ def delete_agent(agent_id: str) -> Dict[str, str]:
 
         # Clean up temp files — only for git/zip agents, never for hook agents
         # (done outside the lock since it can be slow)
-        # BUG-011: delete the parent temp_dir, not just clone_path/extract_path
+    
         if agent.get("source") == "git":
             path = Path(agent.get("clone_path", ""))
             # clone_path is temp_dir/agent_repo — delete temp_dir (parent)
@@ -2359,7 +2369,4 @@ def get_swarm(swarm_id: str) -> dict:
 
 if __name__ == "__main__":
     import uvicorn
-    # host="::" → dual-stack socket: hem IPv4 (127.0.0.1) hem IPv6 (::1) dinler.
-    # macOS'ta browser localhost'u ::1 (IPv6) olarak çözümleyebiliyor;
-    # 0.0.0.0 sadece IPv4 bağlıyor, bu yüzden health-check başarısız oluyordu.
     uvicorn.run(app, host="::", port=8000)
