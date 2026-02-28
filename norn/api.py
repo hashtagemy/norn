@@ -20,8 +20,13 @@ import shutil
 import asyncio
 import uuid
 import zipfile
+import threading
 
 logger = logging.getLogger("norn.api")
+
+# BUG-002: os.chdir() is process-global state. Serialize in-process agent
+# executions so concurrent requests don't corrupt each other's working directory.
+_chdir_lock = threading.Lock()
 
 
 def _atomic_write_json(path: Path, data: Any) -> None:
@@ -1359,13 +1364,19 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
         main_file_path = agent_path_obj / main_file
 
         # Dynamically load agent module
+        # BUG-003: Track which paths we add so we can remove them after execution.
+        _added_sys_paths: list[str] = []
+
+        def _add_to_sys_path(p: str) -> None:
+            if p not in sys.path:
+                sys.path.insert(0, p)
+                _added_sys_paths.append(p)
+
         if is_package:
             logger.info(f"Loading as package: {module_name} from {package_root}")
-            if package_root not in sys.path:
-                sys.path.insert(0, package_root)
+            _add_to_sys_path(package_root)
             # Also add the agent's own directory so local siblings (utils/, tools/, etc.) are importable
-            if str(agent_path) not in sys.path:
-                sys.path.insert(0, str(agent_path))
+            _add_to_sys_path(str(agent_path))
             try:
                 agent_module = importlib.import_module(module_name)
             except ImportError as e:
@@ -1378,8 +1389,7 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                     raise
         else:
             logger.info(f"Loading as single file: {main_file_path}")
-            if str(agent_path) not in sys.path:
-                sys.path.insert(0, str(agent_path))
+            _add_to_sys_path(str(agent_path))
 
             spec = importlib.util.spec_from_file_location("agent_module", main_file_path)
             if spec is None or spec.loader is None:
@@ -1513,8 +1523,9 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
             # Execute agent with task — run inside workspace so file outputs
             # go to the isolated session directory, not the project root.
             os.environ["NORN_WORKSPACE"] = str(workspace_dir)
-            _original_cwd = os.getcwd()
-            os.chdir(workspace_dir)
+            with _chdir_lock:
+                _original_cwd = os.getcwd()
+                os.chdir(workspace_dir)
             try:
                 result = agent_instance(task)
 
@@ -1590,7 +1601,14 @@ def _execute_agent_background(agent_id: str, session_id: str, agent_path: str, m
                 })
             finally:
                 # Always restore original working directory after in-process execution
-                os.chdir(_original_cwd)
+                with _chdir_lock:
+                    os.chdir(_original_cwd)
+                # BUG-003: Clean up sys.path entries added for this agent
+                for _p in _added_sys_paths:
+                    try:
+                        sys.path.remove(_p)
+                    except ValueError:
+                        pass
         
         # Save session
         _atomic_write_json(session_file, session)

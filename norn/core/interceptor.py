@@ -47,6 +47,31 @@ from norn.models.schemas import (
 
 logger = logging.getLogger("norn.interceptor")
 
+# Sensitive field names — values are redacted before writing to logs/dashboard
+_SENSITIVE_KEYS: frozenset[str] = frozenset({
+    "password", "passwd", "secret", "api_key", "apikey",
+    "token", "access_token", "refresh_token", "id_token",
+    "private_key", "access_key", "auth_key", "authorization",
+    "credential", "credentials", "client_secret",
+})
+
+
+def _mask_sensitive(data: dict[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy of *data* with sensitive values replaced by '***REDACTED***'.
+
+    Only top-level keys are checked (nested dicts inside values are not
+    recursed into — tool inputs are typically flat).
+    """
+    if not data:
+        return data
+    masked: dict[str, Any] = {}
+    for k, v in data.items():
+        if any(s in k.lower() for s in _SENSITIVE_KEYS):
+            masked[k] = "***REDACTED***"
+        else:
+            masked[k] = v
+    return masked
+
 
 class NornHook(HookProvider):
     """
@@ -454,7 +479,7 @@ class NornHook(HookProvider):
         step = StepRecord(
             step_number=self._step_counter,
             tool_name=tool_name,
-            tool_input=tool_input,
+            tool_input=_mask_sensitive(tool_input),
             tool_result=result_str,
             status=status,
         )

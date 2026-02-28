@@ -60,12 +60,19 @@ class AgentRunner:
             self.agent_info.get('repo_root')
         )
 
+        # BUG-003: Track paths added so run() can clean them up afterward.
+        self._added_sys_paths: list[str] = []
+
+        def _add(p: str) -> None:
+            if p not in sys.path:
+                sys.path.insert(0, p)
+                self._added_sys_paths.append(p)
+
         if is_package:
-            if package_root not in sys.path:
-                sys.path.insert(0, package_root)
+            _add(package_root)
             return importlib.import_module(module_name)
         else:
-            sys.path.insert(0, str(self.agent_path))
+            _add(str(self.agent_path))
             spec = importlib.util.spec_from_file_location("agent_module", self.main_file)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
@@ -213,12 +220,19 @@ class AgentRunner:
             print(f"❌ Execution failed: {str(e)}")
             print("="*60)
             traceback.print_exc()
-            
+
             return {
                 'success': False,
                 'error': str(e),
                 'traceback': traceback.format_exc()
             }
+        finally:
+            # BUG-003: Remove sys.path entries we added for this agent
+            for _p in getattr(self, '_added_sys_paths', []):
+                try:
+                    sys.path.remove(_p)
+                except ValueError:
+                    pass
 
 
 def main():
