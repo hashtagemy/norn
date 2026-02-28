@@ -148,10 +148,11 @@ def enable_global_monitoring(
     logger.info("Norn global monitoring enabled - ALL agents will be monitored")
 
 
-# Environment variable support
-import os
-if os.getenv("NORN_AUTO_ENABLE", "").lower() == "true":
-    enable_global_monitoring(
-        mode=os.getenv("NORN_MODE", "monitor")
-    )
-    logger.info("Norn auto-enabled via environment variable")
+# BUG-v2-002 fix: Only auto-enable when explicitly run, not on import
+if __name__ == "__main__":
+    import os as _os
+    if _os.getenv("NORN_AUTO_ENABLE", "").lower() == "true":
+        enable_global_monitoring(
+            mode=_os.getenv("NORN_MODE", "monitor")
+        )
+        logger.info("Norn auto-enabled via environment variable")

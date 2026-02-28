@@ -75,17 +75,27 @@ def get_bedrock_client(region: Optional[str] = None):
         )
 
 
+def _mask_credential(value: Optional[str]) -> Optional[str]:
+    """Mask a credential value, showing only the first 4 characters."""
+    if not value:
+        return None
+    if len(value) <= 4:
+        return "****"
+    return value[:4] + "*" * (len(value) - 4)
+
+
 def get_aws_config() -> Dict[str, Any]:
     """
     Get AWS configuration from environment variables.
+    BUG-v2-008 fix: credentials are masked to prevent leaking into logs/responses.
     
     Returns:
-        Dictionary with AWS configuration
+        Dictionary with AWS configuration (credentials masked)
     """
     return {
         "region": os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
-        "bearer_token": os.getenv("AWS_BEARER_TOKEN_BEDROCK"),
-        "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
+        "bearer_token": _mask_credential(os.getenv("AWS_BEARER_TOKEN_BEDROCK")),
+        "access_key": _mask_credential(os.getenv("AWS_ACCESS_KEY_ID")),
         "has_bearer_token": bool(os.getenv("AWS_BEARER_TOKEN_BEDROCK")),
         "has_iam_credentials": bool(
             os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")

@@ -57,10 +57,10 @@ _SENSITIVE_KEYS: frozenset[str] = frozenset({
 
 
 def _mask_sensitive(data: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy of *data* with sensitive values replaced by '***REDACTED***'.
+    """Return a copy of *data* with sensitive values replaced by '***REDACTED***'.
 
-    Only top-level keys are checked (nested dicts inside values are not
-    recursed into — tool inputs are typically flat).
+    BUG-v2-004 fix: recurses into nested dicts so credentials at any depth
+    are masked (e.g. {"config": {"api_key": "sk-xxx"}}).
     """
     if not data:
         return data
@@ -68,6 +68,8 @@ def _mask_sensitive(data: dict[str, Any]) -> dict[str, Any]:
     for k, v in data.items():
         if any(s in k.lower() for s in _SENSITIVE_KEYS):
             masked[k] = "***REDACTED***"
+        elif isinstance(v, dict):
+            masked[k] = _mask_sensitive(v)
         else:
             masked[k] = v
     return masked
@@ -691,7 +693,7 @@ class NornHook(HookProvider):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
+            with urllib.request.urlopen(req, timeout=0.5) as resp:  # BUG-v2-014: was 2.0s
                 return json.loads(resp.read())
         except Exception as exc:
             logger.debug("Dashboard POST %s failed: %s", path, exc)
